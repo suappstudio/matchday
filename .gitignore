@@ -1,0 +1,21 @@
+# Environments
+.venv/
+penv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Database
+matchday.db
+matchday.db/
+
+# Uploads
+uploads/
+
+# OS specific
+.DS_Store
+
+# Environment variables
+.env
+env.example
