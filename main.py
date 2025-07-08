@@ -85,7 +85,6 @@ class PlayerDB(Base):
     
     # Skills
     speed = Column(Integer, default=5)
-    strength = Column(Integer, default=5)
     passing = Column(Integer, default=5)
     attack = Column(Integer, default=5)
     defense = Column(Integer, default=5)
@@ -106,7 +105,6 @@ Base.metadata.create_all(bind=engine)
 # ===== PYDANTIC MODELS =====
 class PlayerSkills(BaseModel):
     speed: int = Field(ge=1, le=10, default=5)
-    strength: int = Field(ge=1, le=10, default=5)
     passing: int = Field(ge=1, le=10, default=5)
     attack: int = Field(ge=1, le=10, default=5)
     defense: int = Field(ge=1, le=10, default=5)
@@ -242,7 +240,6 @@ def get_players(
             "photo_url": player.photo_url,
             "skills": {
                 "speed": player.speed,
-                "strength": player.strength,
                 "passing": player.passing,
                 "attack": player.attack,
                 "defense": player.defense,
@@ -274,7 +271,6 @@ def get_player(player_id: str, db: Session = Depends(get_db)):
         photo_url=player.photo_url,
         skills=PlayerSkills(
             speed=player.speed,
-            strength=player.strength,
             passing=player.passing,
             attack=player.attack,
             defense=player.defense,
@@ -296,7 +292,6 @@ def create_player(player: PlayerCreate, db: Session = Depends(get_db)):
         name=player.name,
         role=player.role,
         speed=player.skills.speed,
-        strength=player.skills.strength,
         passing=player.skills.passing,
         attack=player.skills.attack,
         defense=player.skills.defense,
@@ -322,7 +317,6 @@ def create_player(player: PlayerCreate, db: Session = Depends(get_db)):
         photo_url=db_player.photo_url,
         skills=PlayerSkills(
             speed=db_player.speed,
-            strength=db_player.strength,
             passing=db_player.passing,
             attack=db_player.attack,
             defense=db_player.defense,
@@ -357,7 +351,6 @@ def update_player(
     
     if player_update.skills is not None:
         player.speed = player_update.skills.speed
-        player.strength = player_update.skills.strength
         player.passing = player_update.skills.passing
         player.attack = player_update.skills.attack
         player.defense = player_update.skills.defense
@@ -466,7 +459,6 @@ def get_statistics(db: Session = Depends(get_db)):
     if all_players:
         avg_skills = {
             "speed": sum(p.speed for p in all_players) / len(all_players),
-            "strength": sum(p.strength for p in all_players) / len(all_players),
             "passing": sum(p.passing for p in all_players) / len(all_players),
             "attack": sum(p.attack for p in all_players) / len(all_players),
             "defense": sum(p.defense for p in all_players) / len(all_players),
