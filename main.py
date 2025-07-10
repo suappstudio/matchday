@@ -4,11 +4,10 @@ Match Day Backend API
 Gestisce giocatori, squadre e partite con upload immagini
 """
 
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Depends
+from fastapi import FastAPI, HTTPException, File, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, Enum as SQLEnum
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel, Field
@@ -99,6 +98,13 @@ class PlayerDB(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Statistics
+    goals_scored = Column(Integer, default=0)
+    assists = Column(Integer, default=0)
+    gold_medals = Column(Integer, default=0)
+    silver_medals = Column(Integer, default=0)
+    bronze_medals = Column(Integer, default=0)
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
@@ -120,6 +126,11 @@ class PlayerBase(BaseModel):
     name: str
     role: PlayerRole
     skills: PlayerSkills
+    goals_scored: int = 0
+    assists: int = 0
+    gold_medals: int = 0
+    silver_medals: int = 0
+    bronze_medals: int = 0
 
 class PlayerCreate(PlayerBase):
     pass
@@ -128,12 +139,22 @@ class PlayerUpdate(BaseModel):
     name: Optional[str] = None
     role: Optional[PlayerRole] = None
     skills: Optional[PlayerSkills] = None
+    goals_scored: Optional[int] = None
+    assists: Optional[int] = None
+    gold_medals: Optional[int] = None
+    silver_medals: Optional[int] = None
+    bronze_medals: Optional[int] = None
 
 class Player(PlayerBase):
     id: str
     photo_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    goals_scored: int
+    assists: int
+    gold_medals: int
+    silver_medals: int
+    bronze_medals: int
     
     class Config:
         from_attributes = True
@@ -147,6 +168,11 @@ class PlayerDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     overall_rating: int
+    goals_scored: int
+    assists: int
+    gold_medals: int
+    silver_medals: int
+    bronze_medals: int
     
     class Config:
         from_attributes = True
@@ -186,7 +212,7 @@ def save_upload_file(upload_file: UploadFile, player_id: str) -> str:
             ]
         )
         return result["secure_url"]
-    except Exception as e:
+    except Exception:
         # Fallback to local storage if Cloudinary fails
         file_extension = Path(upload_file.filename).suffix
         file_name = f"{player_id}{file_extension}"
@@ -250,7 +276,12 @@ def get_players(
                 "leadership":player.leadership
             },
             "created_at": player.created_at,
-            "updated_at": player.updated_at
+            "updated_at": player.updated_at,
+            "goals_scored": player.goals_scored,
+            "assists": player.assists,
+            "gold_medals": player.gold_medals,
+            "silver_medals": player.silver_medals,
+            "bronze_medals": player.bronze_medals
         }
         result.append(Player(**player_dict))
     
@@ -282,7 +313,12 @@ def get_player(player_id: str, db: Session = Depends(get_db)):
         ),
         created_at=player.created_at,
         updated_at=player.updated_at,
-        overall_rating=calculate_overall_rating(player)
+        overall_rating=calculate_overall_rating(player),
+        goals_scored=player.goals_scored,
+        assists=player.assists,
+        gold_medals=player.gold_medals,
+        silver_medals=player.silver_medals,
+        bronze_medals=player.bronze_medals
     )
 
 @app.post("/api/players", response_model=Player)
@@ -299,7 +335,12 @@ def create_player(player: PlayerCreate, db: Session = Depends(get_db)):
         goalkeeping=player.skills.goalkeeping,
         heading=player.skills.heading,
         stamina=player.skills.stamina,
-        leadership=player.skills.leadership
+        leadership=player.skills.leadership,
+        goals_scored=player.goals_scored,
+        assists=player.assists,
+        gold_medals=player.gold_medals,
+        silver_medals=player.silver_medals,
+        bronze_medals=player.bronze_medals
     )
     
     # Set default extended skills based on role
@@ -328,7 +369,12 @@ def create_player(player: PlayerCreate, db: Session = Depends(get_db)):
             
         ),
         created_at=db_player.created_at,
-        updated_at=db_player.updated_at
+        updated_at=db_player.updated_at,
+        goals_scored=db_player.goals_scored,
+        assists=db_player.assists,
+        gold_medals=db_player.gold_medals,
+        silver_medals=db_player.silver_medals,
+        bronze_medals=db_player.bronze_medals
     )
 
 @app.put("/api/players/{player_id}", response_model=PlayerDetail)
@@ -359,6 +405,17 @@ def update_player(
         player.heading = player_update.skills.heading
         player.stamina = player_update.skills.stamina
         player.leadership = player_update.skills.leadership
+    
+    if player_update.goals_scored is not None:
+        player.goals_scored = player_update.goals_scored
+    if player_update.assists is not None:
+        player.assists = player_update.assists
+    if player_update.gold_medals is not None:
+        player.gold_medals = player_update.gold_medals
+    if player_update.silver_medals is not None:
+        player.silver_medals = player_update.silver_medals
+    if player_update.bronze_medals is not None:
+        player.bronze_medals = player_update.bronze_medals
     
     player.updated_at = datetime.utcnow()
     
