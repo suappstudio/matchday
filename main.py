@@ -7,7 +7,7 @@ Gestisce giocatori, squadre e partite con upload immagini
 from fastapi import FastAPI, HTTPException, File, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, Enum as SQLEnum, ForeignKey, UniqueConstraint
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Enum as SQLEnum, ForeignKey, UniqueConstraint, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel, Field
