@@ -7,12 +7,12 @@ Gestisce giocatori, squadre e partite con upload immagini
 from fastapi import FastAPI, HTTPException, File, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, Enum as SQLEnum
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Enum as SQLEnum, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date, time
 from uuid import uuid4
 import os
 import shutil
@@ -73,6 +73,16 @@ class PlayerRole(str, enum.Enum):
     MIDFIELDER = "MIDFIELDER"
     FORWARD = "FORWARD"
 
+class SquadraEnum(str, enum.Enum):
+    A = "A"
+    B = "B"
+
+class TipoGolEnum(str, enum.Enum):
+    NORMALE = "normale"
+    RIGORE = "rigore"
+    AUTORETE = "autorete"
+    PUNIZIONE = "punizione"
+
 # ===== DATABASE MODELS =====
 class PlayerDB(Base):
     __tablename__ = "players"
@@ -104,6 +114,39 @@ class PlayerDB(Base):
     gold_medals = Column(Integer, default=0)
     silver_medals = Column(Integer, default=0)
     bronze_medals = Column(Integer, default=0)
+
+class PartitaDB(Base):
+    __tablename__ = "partite"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    data_partita = Column(DateTime, nullable=False)
+    ora_inizio = Column(String) # TIME in SQL is often represented as string or timedelta in Python
+    nome_squadra_a = Column(String(100))
+    nome_squadra_b = Column(String(100))
+    gol_squadra_a = Column(Integer, default=0)
+    gol_squadra_b = Column(Integer, default=0)
+    stadio = Column(String(100))
+    arbitro = Column(String(100))
+    note = Column(String)
+
+class FormazioneDB(Base):
+    __tablename__ = "formazioni"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    partita_id = Column(Integer, ForeignKey('partite.id'), nullable=False)
+    giocatore_id = Column(String, ForeignKey('players.id'), nullable=False)
+    squadra = Column(SQLEnum(SquadraEnum), nullable=False)
+    numero_maglia = Column(Integer)
+    capitano = Column(Boolean, default=False)
+    __table_args__ = (UniqueConstraint('partita_id', 'giocatore_id', name='unique_player_match'),)
+
+class GolDB(Base):
+    __tablename__ = "gol"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    partita_id = Column(Integer, ForeignKey('partite.id'), nullable=False)
+    giocatore_id = Column(String, ForeignKey('players.id'), nullable=False)
+    minuto = Column(Integer, nullable=False)
+    squadra = Column(SQLEnum(SquadraEnum), nullable=False)
+    tipo_gol = Column(SQLEnum(TipoGolEnum), default='normale')
+    assist_giocatore_id = Column(String, ForeignKey('players.id'), nullable=True)
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -174,6 +217,79 @@ class PlayerDetail(BaseModel):
     silver_medals: int
     bronze_medals: int
     
+    class Config:
+        from_attributes = True
+
+# Pydantic Models for Partite
+class PartitaBase(BaseModel):
+    data_partita: date
+    ora_inizio: Optional[time] = None
+    nome_squadra_a: Optional[str] = None
+    nome_squadra_b: Optional[str] = None
+    gol_squadra_a: int = 0
+    gol_squadra_b: int = 0
+    stadio: Optional[str] = None
+    arbitro: Optional[str] = None
+    note: Optional[str] = None
+
+class PartitaCreate(PartitaBase):
+    pass
+
+class PartitaUpdate(BaseModel):
+    data_partita: Optional[date] = None
+    ora_inizio: Optional[time] = None
+    nome_squadra_a: Optional[str] = None
+    nome_squadra_b: Optional[str] = None
+    gol_squadra_a: Optional[int] = None
+    gol_squadra_b: Optional[int] = None
+    stadio: Optional[str] = None
+    arbitro: Optional[str] = None
+    note: Optional[str] = None
+
+class Partita(PartitaBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+# Pydantic Models for Formazioni
+class FormazioneBase(BaseModel):
+    partita_id: int
+    giocatore_id: str
+    squadra: SquadraEnum
+    numero_maglia: Optional[int] = None
+    capitano: bool = False
+
+class FormazioneCreate(FormazioneBase):
+    pass
+
+class Formazione(FormazioneBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+class FormazioneDetail(Formazione):
+    giocatore: Player
+
+    class Config:
+        from_attributes = True
+
+# Pydantic Models for Gol
+class GolBase(BaseModel):
+    partita_id: int
+    giocatore_id: str
+    minuto: int
+    squadra: SquadraEnum
+    tipo_gol: TipoGolEnum = TipoGolEnum.NORMALE
+    assist_giocatore_id: Optional[str] = None
+
+class GolCreate(GolBase):
+    pass
+
+class Gol(GolBase):
+    id: int
+
     class Config:
         from_attributes = True
 
@@ -452,6 +568,237 @@ def delete_player(player_id: str, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "Player deleted successfully"}
+
+# ----- PARTITE ENDPOINTS -----
+
+@app.post("/api/partite", response_model=Partita)
+def create_partita(partita: PartitaCreate, db: Session = Depends(get_db)):
+    """Crea una nuova partita"""
+    db_partita = PartitaDB(
+        data_partita=partita.data_partita,
+        ora_inizio=partita.ora_inizio.strftime("%H:%M:%S") if partita.ora_inizio else None,
+        nome_squadra_a=partita.nome_squadra_a,
+        nome_squadra_b=partita.nome_squadra_b,
+        gol_squadra_a=partita.gol_squadra_a,
+        gol_squadra_b=partita.gol_squadra_b,
+        stadio=partita.stadio,
+        arbitro=partita.arbitro,
+        note=partita.note
+    )
+    db.add(db_partita)
+    db.commit()
+    db.refresh(db_partita)
+    return db_partita
+
+@app.get("/api/partite", response_model=List[Partita])
+def get_partite(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """Ottieni la lista di tutte le partite"""
+    partite = db.query(PartitaDB).offset(skip).limit(limit).all()
+    return partite
+
+@app.get("/api/partite/{partita_id}", response_model=Partita)
+def get_partita(partita_id: int, db: Session = Depends(get_db)):
+    """Ottieni i dettagli di una singola partita"""
+    partita = db.query(PartitaDB).filter(PartitaDB.id == partita_id).first()
+    if not partita:
+        raise HTTPException(status_code=404, detail="Partita not found")
+    return partita
+
+@app.put("/api/partite/{partita_id}", response_model=Partita)
+def update_partita(partita_id: int, partita_update: PartitaUpdate, db: Session = Depends(get_db)):
+    """Aggiorna i dati di una partita"""
+    partita = db.query(PartitaDB).filter(PartitaDB.id == partita_id).first()
+    if not partita:
+        raise HTTPException(status_code=404, detail="Partita not found")
+
+    update_data = partita_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        if key == "ora_inizio" and value is not None:
+            setattr(partita, key, value.strftime("%H:%M:%S"))
+        else:
+            setattr(partita, key, value)
+    
+    db.commit()
+    db.refresh(partita)
+    return partita
+
+@app.delete("/api/partite/{partita_id}")
+def delete_partita(partita_id: int, db: Session = Depends(get_db)):
+    """Elimina una partita"""
+    partita = db.query(PartitaDB).filter(PartitaDB.id == partita_id).first()
+    if not partita:
+        raise HTTPException(status_code=404, detail="Partita not found")
+    db.delete(partita)
+    db.commit()
+    return {"message": "Partita deleted successfully"}
+
+# ----- FORMAZIONI ENDPOINTS -----
+
+@app.post("/api/formazioni", response_model=List[Formazione])
+def create_formazione(formazioni: List[FormazioneCreate], db: Session = Depends(get_db)):
+    """Aggiunge uno o più giocatori ad una formazione di una partita"""
+    created_formazioni = []
+    for formazione in formazioni:
+        # Check if partita_id exists
+        partita = db.query(PartitaDB).filter(PartitaDB.id == formazione.partita_id).first()
+        if not partita:
+            raise HTTPException(status_code=404, detail=f"Partita with ID {formazione.partita_id} not found")
+        
+        # Check if giocatore_id exists
+        giocatore = db.query(PlayerDB).filter(PlayerDB.id == formazione.giocatore_id).first()
+        if not giocatore:
+            raise HTTPException(status_code=404, detail=f"Giocatore with ID {formazione.giocatore_id} not found")
+
+        db_formazione = FormazioneDB(
+            partita_id=formazione.partita_id,
+            giocatore_id=formazione.giocatore_id,
+            squadra=formazione.squadra,
+            numero_maglia=formazione.numero_maglia,
+            capitano=formazione.capitano
+        )
+        try:
+            db.add(db_formazione)
+            db.commit()
+            db.refresh(db_formazione)
+            created_formazioni.append(Formazione.model_validate(db_formazione))
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=f"Error creating formazione for player {formazione.giocatore_id}: {e}")
+    return created_formazioni
+
+@app.get("/api/formazioni", response_model=List[Formazione])
+def get_formazioni(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """Ottieni la lista di tutte le formazioni"""
+    formazioni = db.query(FormazioneDB).offset(skip).limit(limit).all()
+    return formazioni
+
+@app.get("/api/formazioni/{formazione_id}", response_model=Formazione)
+def get_formazione(formazione_id: int, db: Session = Depends(get_db)):
+    """Ottieni i dettagli di una singola formazione"""
+    formazione = db.query(FormazioneDB).filter(FormazioneDB.id == formazione_id).first()
+    if not formazione:
+        raise HTTPException(status_code=404, detail="Formazione not found")
+    return formazione
+
+@app.delete("/api/formazioni/{formazione_id}")
+def delete_formazione(formazione_id: int, db: Session = Depends(get_db)):
+    """Elimina una formazione"""
+    formazione = db.query(FormazioneDB).filter(FormazioneDB.id == formazione_id).first()
+    if not formazione:
+        raise HTTPException(status_code=404, detail="Formazione not found")
+    db.delete(formazione)
+    db.commit()
+    return {"message": "Formazione deleted successfully"}
+
+@app.get("/api/partite/{partita_id}/formazioni", response_model=List[FormazioneDetail])
+def get_formazioni_by_partita(partita_id: int, db: Session = Depends(get_db)):
+    """Ottieni le formazioni per una specifica partita, inclusi i dettagli dei giocatori"""
+    formazioni_db = db.query(FormazioneDB).filter(FormazioneDB.partita_id == partita_id).all()
+    if not formazioni_db:
+        raise HTTPException(status_code=404, detail="Formazioni not found for this partita")
+    
+    formazioni_detail = []
+    for f_db in formazioni_db:
+        player_db = db.query(PlayerDB).filter(PlayerDB.id == f_db.giocatore_id).first()
+        if not player_db:
+            # This should ideally not happen if FK constraints are enforced
+            raise HTTPException(status_code=500, detail=f"Player with ID {f_db.giocatore_id} not found for formazione {f_db.id}")
+        
+        player_skills = PlayerSkills(
+            speed=player_db.speed,
+            passing=player_db.passing,
+            attack=player_db.attack,
+            defense=player_db.defense,
+            technique=player_db.technique,
+            goalkeeping=player_db.goalkeeping,
+            heading=player_db.heading,
+            stamina=player_db.stamina,
+            leadership=player_db.leadership
+        )
+
+        player_model = Player(
+            id=player_db.id,
+            name=player_db.name,
+            role=player_db.role,
+            photo_url=player_db.photo_url,
+            skills=player_skills,
+            created_at=player_db.created_at,
+            updated_at=player_db.updated_at,
+            goals_scored=player_db.goals_scored,
+            assists=player_db.assists,
+            gold_medals=player_db.gold_medals,
+            silver_medals=player_db.silver_medals,
+            bronze_medals=player_db.bronze_medals
+        )
+
+        formazioni_detail.append(FormazioneDetail(
+            id=f_db.id,
+            partita_id=f_db.partita_id,
+            giocatore_id=f_db.giocatore_id,
+            squadra=f_db.squadra,
+            numero_maglia=f_db.numero_maglia,
+            capitano=f_db.capitano,
+            giocatore=player_model
+        ))
+    return formazioni_detail
+
+# ----- GOL ENDPOINTS -----
+
+@app.post("/api/gol", response_model=Gol)
+def create_gol(gol: GolCreate, db: Session = Depends(get_db)):
+    """Registra un gol"""
+    # Check if partita_id exists
+    partita = db.query(PartitaDB).filter(PartitaDB.id == gol.partita_id).first()
+    if not partita:
+        raise HTTPException(status_code=404, detail="Partita not found")
+    
+    # Check if giocatore_id exists
+    giocatore = db.query(PlayerDB).filter(PlayerDB.id == gol.giocatore_id).first()
+    if not giocatore:
+        raise HTTPException(status_code=404, detail="Giocatore not found")
+
+    # Check if assist_giocatore_id exists if provided
+    if gol.assist_giocatore_id:
+        assist_giocatore = db.query(PlayerDB).filter(PlayerDB.id == gol.assist_giocatore_id).first()
+        if not assist_giocatore:
+            raise HTTPException(status_code=404, detail="Assist player not found")
+
+    db_gol = GolDB(
+        partita_id=gol.partita_id,
+        giocatore_id=gol.giocatore_id,
+        minuto=gol.minuto,
+        squadra=gol.squadra,
+        tipo_gol=gol.tipo_gol,
+        assist_giocatore_id=gol.assist_giocatore_id
+    )
+    db.add(db_gol)
+    db.commit()
+    db.refresh(db_gol)
+    return db_gol
+
+@app.get("/api/gol", response_model=List[Gol])
+def get_gol(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    """Ottieni la lista di tutti i gol registrati"""
+    gol = db.query(GolDB).offset(skip).limit(limit).all()
+    return gol
+
+@app.get("/api/gol/{gol_id}", response_model=Gol)
+def get_gol_by_id(gol_id: int, db: Session = Depends(get_db)):
+    """Ottieni i dettagli di un singolo gol"""
+    gol = db.query(GolDB).filter(GolDB.id == gol_id).first()
+    if not gol:
+        raise HTTPException(status_code=404, detail="Gol not found")
+    return gol
+
+@app.delete("/api/gol/{gol_id}")
+def delete_gol(gol_id: int, db: Session = Depends(get_db)):
+    """Elimina un gol registrato"""
+    gol = db.query(GolDB).filter(GolDB.id == gol_id).first()
+    if not gol:
+        raise HTTPException(status_code=404, detail="Gol not found")
+    db.delete(gol)
+    db.commit()
+    return {"message": "Gol deleted successfully"}
 
 # ----- PHOTO UPLOAD ENDPOINT -----
 
