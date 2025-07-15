@@ -150,7 +150,7 @@ class GolDB(Base):
     assist_giocatore_id = Column(String, ForeignKey('players.id'), nullable=True)
 
 # Create tables
-""" Base.metadata.create_all(bind=engine) """
+Base.metadata.create_all(bind=engine)
 
 # ===== PYDANTIC MODELS =====
 class PlayerSkills(BaseModel):
