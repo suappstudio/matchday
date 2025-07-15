@@ -3,11 +3,13 @@
 
 set -o errexit  # exit on error
 
-pip install --upgrade pip
-pip install -r requirements.txt
+source .venv/bin/activate
+
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
 
 # Run database migrations
-python -c "
+python3 -c "
 from main import Base, engine
 print('Creating database tables...')
 Base.metadata.create_all(bind=engine)

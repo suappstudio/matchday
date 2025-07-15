@@ -127,6 +127,7 @@ class PartitaDB(Base):
     stadio = Column(String(100))
     arbitro = Column(String(100))
     note = Column(String)
+    numero_giocatori_squadra = Column(Integer, default=11)
 
 class FormazioneDB(Base):
     __tablename__ = "formazioni"
@@ -231,6 +232,7 @@ class PartitaBase(BaseModel):
     stadio: Optional[str] = None
     arbitro: Optional[str] = None
     note: Optional[str] = None
+    numero_giocatori_squadra: Optional[int] = None
 
 class PartitaCreate(PartitaBase):
     pass
@@ -245,6 +247,7 @@ class PartitaUpdate(BaseModel):
     stadio: Optional[str] = None
     arbitro: Optional[str] = None
     note: Optional[str] = None
+    numero_giocatori_squadra: Optional[int] = None
 
 class Partita(PartitaBase):
     id: int
@@ -583,7 +586,8 @@ def create_partita(partita: PartitaCreate, db: Session = Depends(get_db)):
         gol_squadra_b=partita.gol_squadra_b,
         stadio=partita.stadio,
         arbitro=partita.arbitro,
-        note=partita.note
+        note=partita.note,
+        numero_giocatori_squadra=partita.numero_giocatori_squadra
     )
     db.add(db_partita)
     db.commit()
