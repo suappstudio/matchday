@@ -266,6 +266,13 @@ class FormazioneBase(BaseModel):
 class FormazioneCreate(FormazioneBase):
     pass
 
+class FormazioneUpdate(BaseModel):
+    partita_id: Optional[int] = None
+    giocatore_id: Optional[str] = None
+    squadra: Optional[SquadraEnum] = None
+    numero_maglia: Optional[int] = None
+    capitano: Optional[bool] = None
+
 class Formazione(FormazioneBase):
     id: int
 
@@ -746,6 +753,57 @@ def get_formazioni_by_partita(partita_id: int, db: Session = Depends(get_db)):
         ))
     return formazioni_detail
 
+@app.put("/api/partite/{partita_id}/formazioni", response_model=List[Formazione])
+def update_formazioni_by_partita(
+    partita_id: int,
+    formazioni: List[FormazioneCreate],
+    db: Session = Depends(get_db)
+):
+    """Aggiorna tutte le formazioni di una partita (sostituisce completamente la formazione esistente)"""
+    # Check if partita_id exists
+    partita = db.query(PartitaDB).filter(PartitaDB.id == partita_id).first()
+    if not partita:
+        raise HTTPException(status_code=404, detail="Partita not found")
+    
+    # Delete existing formazioni for this partita
+    db.query(FormazioneDB).filter(FormazioneDB.partita_id == partita_id).delete()
+    
+    # Create new formazioni
+    created_formazioni = []
+    for formazione in formazioni:
+        # Validate that partita_id matches the URL parameter
+        if formazione.partita_id != partita_id:
+            raise HTTPException(status_code=400, detail=f"partita_id in body ({formazione.partita_id}) must match URL parameter ({partita_id})")
+        
+        # Check if giocatore_id exists
+        giocatore = db.query(PlayerDB).filter(PlayerDB.id == formazione.giocatore_id).first()
+        if not giocatore:
+            db.rollback()
+            raise HTTPException(status_code=404, detail=f"Giocatore with ID {formazione.giocatore_id} not found")
+
+        db_formazione = FormazioneDB(
+            partita_id=formazione.partita_id,
+            giocatore_id=formazione.giocatore_id,
+            squadra=formazione.squadra,
+            numero_maglia=formazione.numero_maglia,
+            capitano=formazione.capitano
+        )
+        
+        try:
+            db.add(db_formazione)
+            db.flush()  # Flush to get the ID but don't commit yet
+            created_formazioni.append(Formazione.model_validate(db_formazione))
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=f"Error creating formazione for player {formazione.giocatore_id}: {e}")
+    
+    try:
+        db.commit()
+        return created_formazioni
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Error committing formazioni changes: {e}")
+
 # ----- GOL ENDPOINTS -----
 
 @app.post("/api/gol", response_model=Gol)
@@ -803,6 +861,17 @@ def delete_gol(gol_id: int, db: Session = Depends(get_db)):
     db.delete(gol)
     db.commit()
     return {"message": "Gol deleted successfully"}
+
+@app.get("/api/partite/{partita_id}/gol", response_model=List[Gol])
+def get_gol_by_partita(partita_id: int, db: Session = Depends(get_db)):
+    """Ottieni tutti i gol di una specifica partita"""
+    # Check if partita_id exists
+    partita = db.query(PartitaDB).filter(PartitaDB.id == partita_id).first()
+    if not partita:
+        raise HTTPException(status_code=404, detail="Partita not found")
+    
+    gol = db.query(GolDB).filter(GolDB.partita_id == partita_id).all()
+    return gol
 
 # ----- PHOTO UPLOAD ENDPOINT -----
 

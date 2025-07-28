@@ -368,6 +368,47 @@ Ottieni le formazioni per una specifica partita.
     *   `partita_id` (intero, obbligatorio): L'ID della partita.
 *   **Risposta di successo (200 OK)**: Ritorna un array di oggetti formazione con i dettagli dei giocatori.
 
+#### PUT /api/partite/{partita_id}/formazioni
+
+Aggiorna tutte le formazioni di una partita (sostituisce completamente la formazione esistente).
+
+*   **Metodo**: `PUT`
+*   **URL**: `/api/partite/{partita_id}/formazioni`
+*   **Parametri di percorso**:
+    *   `partita_id` (intero, obbligatorio): L'ID della partita.
+*   **Corpo della richiesta**: Un array di oggetti formazione.
+    ```json
+    [
+      {
+        "partita_id": 1,
+        "giocatore_id": "uuid-string-1",
+        "squadra": "A",
+        "numero_maglia": 10,
+        "capitano": true
+      },
+      {
+        "partita_id": 1,
+        "giocatore_id": "uuid-string-2",
+        "squadra": "B",
+        "numero_maglia": 9,
+        "capitano": false
+      }
+    ]
+    ```
+*   **Risposta di successo (200 OK)**: Ritorna un array degli oggetti formazione aggiornati.
+*   **Risposta di errore (404 Not Found)**:
+    ```json
+    {
+      "detail": "Partita not found"
+    }
+    ```
+*   **Risposta di errore (400 Bad Request)**: Se il `partita_id` nel body non corrisponde a quello nell'URL o se un giocatore non esiste.
+    ```json
+    {
+      "detail": "partita_id in body (2) must match URL parameter (1)"
+    }
+    ```
+
 ---
 
 ### Gol
@@ -396,7 +437,42 @@ Recupera un elenco di tutti i gol registrati.
 
 *   **Metodo**: `GET`
 *   **URL**: `/api/gol`
+*   **Parametri di query**:
+    *   `skip` (opzionale, intero, default: 0): Numero di gol da saltare.
+    *   `limit` (opzionale, intero, default: 100): Numero massimo di gol da restituire.
 *   **Risposta di successo (200 OK)**: Ritorna un array di oggetti gol.
+
+#### GET /api/gol/{gol_id}
+
+Recupera i dettagli di un singolo gol.
+
+*   **Metodo**: `GET`
+*   **URL**: `/api/gol/{gol_id}`
+*   **Parametri di percorso**:
+    *   `gol_id` (intero, obbligatorio): L'ID del gol.
+*   **Risposta di successo (200 OK)**: Ritorna l'oggetto del gol.
+*   **Risposta di errore (404 Not Found)**:
+    ```json
+    {
+      "detail": "Gol not found"
+    }
+    ```
+
+#### GET /api/partite/{partita_id}/gol
+
+Recupera tutti i gol di una partita specifica.
+
+*   **Metodo**: `GET`
+*   **URL**: `/api/partite/{partita_id}/gol`
+*   **Parametri di percorso**:
+    *   `partita_id` (intero, obbligatorio): L'ID della partita.
+*   **Risposta di successo (200 OK)**: Ritorna un array di oggetti gol per la partita specificata.
+*   **Risposta di errore (404 Not Found)**:
+    ```json
+    {
+      "detail": "Partita not found"
+    }
+    ```
 
 #### DELETE /api/gol/{gol_id}
 
@@ -410,6 +486,12 @@ Elimina un gol registrato.
     ```json
     {
       "message": "Gol deleted successfully"
+    }
+    ```
+*   **Risposta di errore (404 Not Found)**:
+    ```json
+    {
+      "detail": "Gol not found"
     }
     ```
 
